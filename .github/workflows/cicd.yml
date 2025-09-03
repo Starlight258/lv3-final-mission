@@ -2,7 +2,9 @@ name: CICD
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main" ]   # PR 올리면 테스트/빌드만
+  push:
+    branches: [ "main" ]   # main 브랜치에 머지되면 CD까지 실행
   workflow_dispatch:
 
 env:
@@ -30,6 +32,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run Tests
+        env:
+          SPRING_PROFILES_ACTIVE: test
         run: ./gradlew test
 
       - name: Set up Docker Buildx
@@ -45,20 +49,22 @@ jobs:
         run: |
           TAG_LATEST="main-latest"
           docker buildx build \
-          --cache-to=type=registry,ref=$IMAGE:build-cache,mode=max \
-          --cache-from=type=registry,ref=$IMAGE:build-cache \
-          -f Dockerfile \
-          --platform linux/arm64 \
-          -t $IMAGE:$TAG_LATEST \
-          --push \
-          .
+            --cache-to=type=registry,ref=$IMAGE:build-cache,mode=max \
+            --cache-from=type=registry,ref=$IMAGE:build-cache \
+            -f Dockerfile \
+            --platform linux/arm64 \
+            -t $IMAGE:$TAG_LATEST \
+            --push \
+            .
 
   cd:
     needs: ci
     runs-on: [ self-hosted, main ]
+    if: github.ref == 'refs/heads/main'
     env:
       IMAGE: myungji/test
       TAG: "main-latest"
+
     steps:
       - name: Login to Docker Hub
         uses: docker/login-action@v3.3.0
@@ -103,8 +109,8 @@ jobs:
             -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
             -e NICKNAME_SECRET_KEY="${{ secrets.NICKNAME_SECRET_KEY }}" \
             $IMAGE:$TAG
-          
-          echo "컨테이너 실행 완료."  
+
+          echo "컨테이너 실행 완료."
 
       - name: Docker image Prune
         run: |
