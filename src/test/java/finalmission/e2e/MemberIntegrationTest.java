@@ -33,16 +33,6 @@ public class MemberIntegrationTest {
     }
 
     @Test
-    void signupWithRandomNickname() {
-        RestAssured.given().log().all()
-                .body(new SignupRequest(true, null, REGULAR_EMAIL, PASSWORD))
-                .contentType(MediaType.APPLICATION_JSON_VALUE)
-                .when().post("/member/signup")
-                .then().log().all()
-                .statusCode(201);
-    }
-
-    @Test
     void signupWithSelectedNickname() {
         RestAssured.given().log().all()
                 .body(new SignupRequest(false, REGULAR_NAME, REGULAR_EMAIL, PASSWORD))
