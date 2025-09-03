@@ -98,7 +98,7 @@ jobs:
             --network test-net \
             -p 80:8080 \
             -e DB_URL="${{ secrets.DB_URL }}" \
-            -e DB_USERNAME="${{ secrets.DB_USER }}" \
+            -e DB_USER="${{ secrets.DB_USER }}" \
             -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
             -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
             -e NICKNAME_SECRET_KEY="${{ secrets.NICKNAME_SECRET_KEY }}" \
