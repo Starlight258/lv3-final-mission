@@ -1,0 +1,113 @@
+name: CICD
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  IMAGE: myungji/test
+
+jobs:
+  ci:
+    runs-on: ubuntu-22.04-arm
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Tests
+        run: ./gradlew test
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_DEPLOY_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_DEPLOY_TOKEN }}
+
+      - name: Docker Image Build & Push (arm64-arch)
+        run: |
+          TAG_LATEST="main-latest"
+          docker buildx build \
+          --cache-to=type=registry,ref=$IMAGE:build-cache,mode=max \
+          --cache-from=type=registry,ref=$IMAGE:build-cache \
+          -f Dockerfile \
+          --platform linux/arm64 \
+          -t $IMAGE:$TAG_LATEST \
+          --push \
+          .
+
+  cd:
+    needs: ci
+    runs-on: [ self-hosted, main ]
+    env:
+      IMAGE: myungji/test
+      TAG: "main-latest"
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_DEPLOY_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_DEPLOY_TOKEN }}
+
+      - name: Pull Docker image
+        run: |
+          echo "Docker 이미지 pull 시작"
+          docker pull $IMAGE:$TAG
+          echo "Docker 이미지 pull 완료"
+
+      - name: Stop & Remove existing container (by name)
+        run: |
+          set -e
+          NAME="test-backend"
+          if [ "$(docker ps -q -f name=^/${NAME}$)" ]; then
+            echo "실행중 컨테이너 중지: $NAME"
+            docker stop $NAME
+          fi
+          if [ "$(docker ps -aq -f name=^/${NAME}$)" ]; then
+            echo "기존 컨테이너 제거: $NAME"
+            docker rm $NAME
+          fi
+          echo "포트 80 점유 프로세스 확인 및 정리"
+          sudo fuser -k -n tcp 80 || true
+
+      - name: Run docker container
+        run: |
+          set -e
+          NAME="test-backend"
+          echo "새 Docker 컨테이너 실행..."
+          docker run -d \
+            --name $NAME \
+            --restart unless-stopped \
+            --network test-net \
+            -p 80:8080 \
+            -e DB_URL="${{ secrets.DB_URL }}" \
+            -e DB_USERNAME="${{ secrets.DB_USER }}" \
+            -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            -e NICKNAME_SECRET_KEY="${{ secrets.NICKNAME_SECRET_KEY }}" \
+            $IMAGE:$TAG
+          
+          echo "컨테이너 실행 완료."  
+
+      - name: Docker image Prune
+        run: |
+          echo "사용하지 않는 Docker 이미지 정리 중..."
+          docker image prune -af || true
+          echo "이미지 정리 완료"
